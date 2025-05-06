@@ -79,8 +79,33 @@ export async function POST(req: NextRequest) {
       );
     }
   } else if (method === "sms" && phone) {
-    // TODO: Integrate with real SMS service (e.g., Twilio)
-    console.log(`[STUB] Sent SMS to ${phone} with link: ${inviteLink}`);
+    // Twilio integration
+    const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+    const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+    const TWILIO_FROM_PHONE = process.env.TWILIO_FROM_PHONE;
+    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_PHONE) {
+      return NextResponse.json(
+        { error: "Twilio is not configured. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_PHONE in your environment." },
+        { status: 500 }
+      );
+    }
+    try {
+      // Only require twilio on the server
+      // @ts-ignore
+      const twilio = require("twilio")(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+      await twilio.messages.create({
+        to: phone,
+        from: TWILIO_FROM_PHONE,
+        body:
+          `Hi ${name}, you are invited to our wedding! RSVP here: ${inviteLink}`
+      });
+    } catch (err: any) {
+      console.error("Twilio error:", err);
+      return NextResponse.json(
+        { error: "Failed to send SMS invite." },
+        { status: 500 }
+      );
+    }
   }
 
   // Return the invite link so it can be copied/shared
