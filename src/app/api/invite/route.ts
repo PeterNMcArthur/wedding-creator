@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { query } from "@/src/db";
 
 // Only import @sendgrid/mail on the server
 let sendgridMail: typeof import("@sendgrid/mail") | null = null;
@@ -8,9 +9,6 @@ if (typeof window === "undefined") {
   sendgridMail = require("@sendgrid/mail");
 }
 
-// In a real app, use a DB! For demo, in-memory
-const guests: Record<string, any> = {};
-
 function generateInviteLink(guestId: string) {
   // In production, use your real domain
   return `https://yourdomain.com/invite/${guestId}`;
@@ -18,8 +16,13 @@ function generateInviteLink(guestId: string) {
 
 // GET: Return list of all guests
 export async function GET() {
-  // Return all guests as array
-  return NextResponse.json({ guests: Object.values(guests) });
+  try {
+    const res = await query("SELECT * FROM guests ORDER BY invited_at DESC");
+    return NextResponse.json({ guests: res.rows });
+  } catch (err) {
+    console.error("DB error:", err);
+    return NextResponse.json({ error: "Database error" }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -33,18 +36,17 @@ export async function POST(req: NextRequest) {
   const guestId = crypto.randomUUID();
   const inviteLink = generateInviteLink(guestId);
 
-  // Store guest (simulate DB)
-  guests[guestId] = {
-    id: guestId,
-    name,
-    email,
-    phone,
-    method,
-    inviteLink,
-    invitedAt: new Date().toISOString(),
-    status: "invited",
-    rsvp: false, // RSVP status, default to false
-  };
+  // Insert guest into database
+  try {
+    await query(
+      `INSERT INTO guests (id, name, email, phone, method, invite_link, invited_at, status, rsvp)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)`,
+      [guestId, name, email, phone, method, inviteLink, "invited", false]
+    );
+  } catch (err) {
+    console.error("DB insert error:", err);
+    return NextResponse.json({ error: "Database insert error" }, { status: 500 });
+  }
 
   // Actually send email using SendGrid if configured
   if (method === "email" && email) {
