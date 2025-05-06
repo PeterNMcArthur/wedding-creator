@@ -2,11 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 
 // In a real app, use a DB! For demo, in-memory
-const guests: Record&lt;string, any&gt; = {};
+const guests: Record<string, any> = {};
 
 function generateInviteLink(guestId: string) {
   // In production, use your real domain
   return `https://yourdomain.com/invite/${guestId}`;
+}
+
+// GET: Return list of all guests
+export async function GET() {
+  // Return all guests as array
+  return NextResponse.json({ guests: Object.values(guests) });
 }
 
 export async function POST(req: NextRequest) {
@@ -30,6 +36,7 @@ export async function POST(req: NextRequest) {
     inviteLink,
     invitedAt: new Date().toISOString(),
     status: "invited",
+    rsvp: false, // RSVP status, default to false
   };
 
   // Stub: Send email or SMS

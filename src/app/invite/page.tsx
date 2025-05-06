@@ -1,5 +1,17 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+
+type Guest = {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  method: string;
+  inviteLink: string;
+  invitedAt: string;
+  status: string;
+  rsvp: boolean;
+};
 
 export default function InvitePage() {
   const [name, setName] = useState("");
@@ -10,6 +22,28 @@ export default function InvitePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+
+  const [guests, setGuests] = useState<Guest[]>([]);
+  const [loadingGuests, setLoadingGuests] = useState(false);
+
+  // Fetch all invited guests
+  const fetchGuests = async () => {
+    setLoadingGuests(true);
+    try {
+      const res = await fetch("/api/invite");
+      const data = await res.json();
+      if (res.ok && data.guests) {
+        setGuests(data.guests);
+      }
+    } catch (err) {
+      // ignore error for now
+    }
+    setLoadingGuests(false);
+  };
+
+  useEffect(() => {
+    fetchGuests();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +63,8 @@ export default function InvitePage() {
       } else {
         setInviteLink(data.inviteLink);
         setSuccess(true);
+        // Refresh guest list
+        fetchGuests();
       }
     } catch (err) {
       setError("Network error.");
@@ -37,7 +73,7 @@ export default function InvitePage() {
   };
 
   return (
-    <div style={{ maxWidth: 400, margin: "2rem auto", padding: 24, border: "1px solid #ddd", borderRadius: 8 }}>
+    <div style={{ maxWidth: 500, margin: "2rem auto", padding: 24, border: "1px solid #ddd", borderRadius: 8 }}>
       <h2>Invite a Wedding Guest</h2>
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <label>
@@ -88,6 +124,46 @@ export default function InvitePage() {
             </button>
           </div>
         </div>
+      )}
+
+      <hr style={{ margin: "2rem 0" }} />
+
+      <h3>Guest List</h3>
+      {loadingGuests ? (
+        <div>Loading guests...</div>
+      ) : guests.length === 0 ? (
+        <div>No guests have been invited yet.</div>
+      ) : (
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ background: "#f2f2f2" }}>
+              <th style={{ padding: 6, border: "1px solid #ddd" }}>Name</th>
+              <th style={{ padding: 6, border: "1px solid #ddd" }}>Contact</th>
+              <th style={{ padding: 6, border: "1px solid #ddd" }}>Method</th>
+              <th style={{ padding: 6, border: "1px solid #ddd" }}>Invited At</th>
+              <th style={{ padding: 6, border: "1px solid #ddd" }}>RSVP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {guests.map(g => (
+              <tr key={g.id}>
+                <td style={{ padding: 6, border: "1px solid #ddd" }}>{g.name}</td>
+                <td style={{ padding: 6, border: "1px solid #ddd" }}>
+                  {g.email || g.phone || "N/A"}
+                </td>
+                <td style={{ padding: 6, border: "1px solid #ddd" }}>{g.method}</td>
+                <td style={{ padding: 6, border: "1px solid #ddd" }}>{new Date(g.invitedAt).toLocaleString()}</td>
+                <td style={{ padding: 6, border: "1px solid #ddd" }}>
+                  {g.rsvp ? (
+                    <span style={{ color: "green" }}>Yes</span>
+                  ) : (
+                    <span style={{ color: "gray" }}>No</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );
