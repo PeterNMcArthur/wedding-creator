@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 
+// Only import @sendgrid/mail on the server
+let sendgridMail: typeof import("@sendgrid/mail") | null = null;
+if (typeof window === "undefined") {
+  // @ts-ignore
+  sendgridMail = require("@sendgrid/mail");
+}
+
 // In a real app, use a DB! For demo, in-memory
 const guests: Record<string, any> = {};
 
@@ -39,10 +46,38 @@ export async function POST(req: NextRequest) {
     rsvp: false, // RSVP status, default to false
   };
 
-  // Stub: Send email or SMS
+  // Actually send email using SendGrid if configured
   if (method === "email" && email) {
-    // TODO: Integrate with real email service (e.g., SendGrid)
-    console.log(`[STUB] Sent invite to ${email} with link: ${inviteLink}`);
+    const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+    const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
+    if (!SENDGRID_API_KEY || !SENDGRID_FROM_EMAIL) {
+      return NextResponse.json(
+        { error: "SendGrid is not configured. Please set SENDGRID_API_KEY and SENDGRID_FROM_EMAIL in your environment." },
+        { status: 500 }
+      );
+    }
+    try {
+      if (sendgridMail) {
+        sendgridMail.setApiKey(SENDGRID_API_KEY);
+        await sendgridMail.send({
+          to: email,
+          from: SENDGRID_FROM_EMAIL,
+          subject: "You're Invited to the Wedding!",
+          html: `
+            <p>Hi ${name},</p>
+            <p>You are invited to our wedding! Please use the link below to RSVP:</p>
+            <p><a href="${inviteLink}">${inviteLink}</a></p>
+            <p>We hope to see you there!</p>
+          `,
+        });
+      }
+    } catch (err: any) {
+      console.error("SendGrid error:", err);
+      return NextResponse.json(
+        { error: "Failed to send email invite." },
+        { status: 500 }
+      );
+    }
   } else if (method === "sms" && phone) {
     // TODO: Integrate with real SMS service (e.g., Twilio)
     console.log(`[STUB] Sent SMS to ${phone} with link: ${inviteLink}`);
