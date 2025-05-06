@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { query } from "@/src/db";
+import { z } from "zod";
 
 // Only import @sendgrid/mail on the server
 let sendgridMail: typeof import("@sendgrid/mail") | null = null;
@@ -14,11 +15,38 @@ function generateInviteLink(guestId: string) {
   return `https://yourdomain.com/invite/${guestId}`;
 }
 
+// Zod schema for request validation
+const inviteSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Invalid email").optional().or(z.literal("")),
+  phone: z.string().optional().or(z.literal("")),
+  method: z.enum(["email", "sms", "link"]),
+});
+
+// (Optional) Zod schema for DB guest validation
+const guestSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  email: z.string().nullable(),
+  phone: z.string().nullable(),
+  method: z.string(),
+  invite_link: z.string(),
+  invited_at: z.date().or(z.string()),
+  status: z.string(),
+  rsvp: z.boolean(),
+});
+
 // GET: Return list of all guests
 export async function GET() {
   try {
     const res = await query("SELECT * FROM guests ORDER BY invited_at DESC");
-    return NextResponse.json({ guests: res.rows });
+    // Optionally validate each guest row
+    const guests = res.rows.map((guest: any) => {
+      // Accept both string/timestamp for invited_at for compatibility
+      guestSchema.parse(guest); // Throws if invalid
+      return guest;
+    });
+    return NextResponse.json({ guests });
   } catch (err) {
     console.error("DB error:", err);
     return NextResponse.json({ error: "Database error" }, { status: 500 });
@@ -26,10 +54,33 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { name, email, phone, method } = await req.json();
+  let body: any;
+  try {
+    body = await req.json();
+  } catch (e) {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
-  if (!name || (!email && !phone)) {
-    return NextResponse.json({ error: "Missing guest info" }, { status: 400 });
+  // Validate input using Zod
+  const parsed = inviteSchema.safeParse(body);
+  if (!parsed.success) {
+    const message =
+      parsed.error.errors.map(e => `${e.path[0]}: ${e.message}`).join(", ") ||
+      "Invalid input";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+  const { name, email, phone, method } = parsed.data;
+
+  // Require at least email or phone for email/sms, allow neither for link
+  if (
+    (method === "email" && !email) ||
+    (method === "sms" && !phone) ||
+    (!email && !phone && method !== "link")
+  ) {
+    return NextResponse.json(
+      { error: "Email or phone is required for this invite method." },
+      { status: 400 }
+    );
   }
 
   // Generate unique ID for the guest
@@ -41,7 +92,7 @@ export async function POST(req: NextRequest) {
     await query(
       `INSERT INTO guests (id, name, email, phone, method, invite_link, invited_at, status, rsvp)
        VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)`,
-      [guestId, name, email, phone, method, inviteLink, "invited", false]
+      [guestId, name, email || null, phone || null, method, inviteLink, "invited", false]
     );
   } catch (err) {
     console.error("DB insert error:", err);
